@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+{% block title %}Knowledge Base — EduAI Ghana{% endblock %}
+{% block page_title %}Knowledge Base{% endblock %}
+{% block topbar_actions %}
+<button class="btn btn-primary" onclick="document.getElementById('uploadModal').style.display='flex'">
+  <i class="fas fa-upload"></i> Upload Document
+</button>
+{% endblock %}
+{% block extra_head %}
+<style>
+  .upload-modal {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(26,26,46,0.6);
+    z-index: 500;
+    align-items: center;
+    justify-content: center;
+  }
+  .upload-modal.open { display: flex; }
+  .modal-box {
+    background: var(--white);
+    border-radius: var(--radius);
+    padding: 36px;
+    width: 100%;
+    max-width: 520px;
+    box-shadow: var(--shadow-lg);
+  }
+  .modal-box h3 { font-family: var(--font-display); font-size: 1.4rem; margin-bottom: 24px; }
+  .drop-zone {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 40px;
+    text-align: center;
+    transition: all 0.2s;
+    cursor: pointer;
+    margin-bottom: 20px;
+  }
+  .drop-zone.dragover, .drop-zone:hover { border-color: var(--gold); background: var(--gold-pale); }
+  .drop-zone i { font-size: 2.5rem; color: var(--gold); margin-bottom: 12px; display: block; }
+  .drop-zone p { color: var(--mid); font-size: 0.88rem; }
+  .drop-zone .file-name { color: var(--green); font-weight: 600; margin-top: 8px; }
+  .doc-card {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    box-shadow: var(--shadow);
+    transition: all 0.2s;
+  }
+  .doc-card:hover { border-color: var(--gold-light); transform: translateY(-1px); }
+  .doc-icon {
+    width: 48px; height: 48px;
+    border-radius: 12px;
+    background: var(--gold-pale);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.3rem;
+    color: var(--gold);
+    flex-shrink: 0;
+  }
+  .doc-info { flex: 1; min-width: 0; }
+  .doc-name { font-weight: 600; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .doc-meta { font-size: 0.78rem; color: var(--mid); margin-top: 4px; }
+  .doc-chunks { font-size: 0.75rem; color: var(--green); font-weight: 600; }
+  .docs-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+</style>
+{% endblock %}
+{% block content %}
+
+<div class="card" style="margin-bottom:24px;">
+  <div class="card-body">
+    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+      <div style="flex:1;">
+        <div style="font-family:var(--font-display);font-size:1.1rem;margin-bottom:4px;">Your Knowledge Base</div>
+        <div style="color:var(--mid);font-size:0.85rem;">Upload educational materials and the AI will learn from them to generate contextual content.</div>
+      </div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;">
+        <div style="text-align:center;padding:12px 20px;background:var(--gold-pale);border-radius:var(--radius-sm);">
+          <div style="font-family:var(--font-display);font-size:1.4rem;color:var(--gold);">{{ docs|length }}</div>
+          <div style="font-size:0.72rem;color:var(--mid);text-transform:uppercase;letter-spacing:0.06em;">Documents</div>
+        </div>
+        <div style="text-align:center;padding:12px 20px;background:var(--green-pale);border-radius:var(--radius-sm);">
+          <div style="font-family:var(--font-display);font-size:1.4rem;color:var(--green);">{{ docs|sum(attribute='chunk_count') }}</div>
+          <div style="font-size:0.72rem;color:var(--mid);text-transform:uppercase;letter-spacing:0.06em;">Knowledge Chunks</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if docs %}
+<div class="docs-grid">
+  {% for doc in docs %}
+  <div class="doc-card">
+    <div class="doc-icon">
+      {% if doc.filename.endswith('.pdf') %}<i class="fas fa-file-pdf"></i>
+      {% elif doc.filename.endswith('.docx') %}<i class="fas fa-file-word"></i>
+      {% else %}<i class="fas fa-file-alt"></i>{% endif %}
+    </div>
+    <div class="doc-info">
+      <div class="doc-name">{{ doc.filename }}</div>
+      <div class="doc-meta">
+        <span class="badge badge-gold">{{ doc.subject }}</span>
+        {% if doc.grade_level %}<span class="badge badge-dark" style="margin-left:6px;">{{ doc.grade_level }}</span>{% endif %}
+      </div>
+      <div class="doc-chunks"><i class="fas fa-database"></i> {{ doc.chunk_count }} chunks · {{ doc.uploaded_at.strftime('%b %d, %Y') }}</div>
+    </div>
+    <form method="POST" action="{{ url_for('documents.delete', doc_id=doc.id) }}" onsubmit="return confirm('Delete this document and its knowledge base?')">
+      <button type="submit" class="btn btn-outline btn-sm" style="color:var(--red);border-color:rgba(192,57,43,0.3);">
+        <i class="fas fa-trash"></i>
+      </button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card">
+  <div class="card-body" style="text-align:center;padding:60px;">
+    <i class="fas fa-book-open" style="font-size:3rem;color:var(--gold);opacity:0.4;margin-bottom:16px;display:block;"></i>
+    <div style="font-family:var(--font-display);font-size:1.2rem;margin-bottom:8px;">No documents yet</div>
+    <div style="color:var(--mid);font-size:0.9rem;margin-bottom:24px;">Upload your first teaching material to build your AI knowledge base.</div>
+    <button class="btn btn-primary" onclick="document.getElementById('uploadModal').style.display='flex'">
+      <i class="fas fa-upload"></i> Upload Your First Document
+    </button>
+  </div>
+</div>
+{% endif %}
+
+<!-- Upload Modal -->
+<div class="upload-modal" id="uploadModal">
+  <div class="modal-box">
+    <h3><i class="fas fa-upload" style="color:var(--gold);margin-right:10px;"></i>Upload Document</h3>
+    <form method="POST" action="{{ url_for('documents.upload') }}" enctype="multipart/form-data" id="uploadForm" >
+      <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+        <i class="fas fa-cloud-upload-alt"></i>
+        <p>Click to browse or drag & drop your file here</p>
+        <p style="margin-top:6px;font-size:0.78rem;">Supports: PDF, DOCX, DOC, TXT, MD, PNG, JPG, TIFF</p>
+        <div class="file-name" id="fileName"></div>
+      </div>
+      <input type="file" id="fileInput" name="file" accept=".pdf,.docx,.doc,.txt,.md,.png,.jpg,.jpeg,.tiff,.bmp,.webp" style="display:none;" required>
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Subject *</label>
+          <select name="subject" class="form-control" required>
+            <option value="">Select subject</option>
+            {% for s in subjects %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Grade Level</label>
+          <select name="grade_level" class="form-control">
+            <option value="">Select grade</option>
+            {% for g in grade_levels %}<option value="{{ g }}">{{ g }}</option>{% endfor %}
+          </select>
+        </div>
+      </div>
+      <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:8px;">
+        <button type="button" class="btn btn-outline" onclick="document.getElementById('uploadModal').style.display='none'">Cancel</button>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-upload"></i> Upload & Process</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  const fileInput = document.getElementById('fileInput');
+  const fileName = document.getElementById('fileName');
+  const dropZone = document.getElementById('dropZone');
+
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files[0]) fileName.textContent = '✅ ' + fileInput.files[0].name;
+  });
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    if (e.dataTransfer.files[0]) {
+      fileInput.files = e.dataTransfer.files;
+      fileName.textContent = '✅ ' + e.dataTransfer.files[0].name;
+    }
+  });
+  window.onclick = e => { if (e.target === document.getElementById('uploadModal')) document.getElementById('uploadModal').style.display = 'none'; }
+</script>
+{% endblock %}

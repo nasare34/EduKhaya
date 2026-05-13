@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+{% block title %}Generate Content — EduAI Ghana{% endblock %}
+{% block page_title %}Generate Content{% endblock %}
+{% block extra_head %}
+<style>
+  .gen-type-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; margin-bottom: 24px; }
+  .type-card {
+    border: 2px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px 14px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: var(--white);
+  }
+  .type-card:hover { border-color: var(--gold-light); background: var(--gold-pale); }
+  .type-card.selected { border-color: var(--gold); background: var(--gold-pale); box-shadow: 0 0 0 3px rgba(200,146,42,0.15); }
+  .type-card .tc-icon { font-size: 1.8rem; margin-bottom: 8px; display: block; }
+  .type-card .tc-label { font-size: 0.82rem; font-weight: 600; color: var(--dark); }
+  .llm-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-bottom: 20px; }
+  .llm-card {
+    border: 2px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 14px 12px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: var(--white);
+    position: relative;
+  }
+  .llm-card.selected { border-color: var(--green); background: var(--green-pale); }
+  .llm-card.unavailable { opacity: 0.45; cursor: not-allowed; }
+  .llm-card .llm-name { font-size: 0.8rem; font-weight: 600; margin-top: 4px; }
+  .llm-card .llm-status { font-size: 0.68rem; margin-top: 3px; }
+  .llm-card .llm-status.avail { color: var(--green); }
+  .llm-card .llm-status.unavail { color: var(--mid); }
+  .section-title { font-family: var(--font-display); font-size: 1rem; margin-bottom: 12px; color: var(--dark); }
+  .subject-hint { display: inline-block; font-size: 0.75rem; background: var(--green-pale); color: var(--green); padding: 2px 8px; border-radius: 10px; margin-left: 8px; }
+  @media(max-width:700px) { .gen-type-grid,.llm-grid { grid-template-columns: 1fr 1fr; } }
+</style>
+{% endblock %}
+{% block content %}
+
+<div class="grid-2" style="gap:24px;align-items:start;">
+  <!-- LEFT: Form -->
+  <div>
+    <div class="card">
+      <div class="card-header"><h3>Content Settings</h3></div>
+      <div class="card-body">
+        <form method="POST" action="{{ url_for('generate.generate') }}" id="genForm" onsubmit="showLoading('🤖 AI is generating your content...')">
+          <!-- Generation Type -->
+          <div style="margin-bottom:20px;">
+            <div class="section-title">What do you want to generate?</div>
+            <div class="gen-type-grid">
+              {% set icons = {'lesson_plan':'📋','exam_questions':'📝','examples':'💡','explanation':'📖'} %}
+              {% for key, label in generation_types.items() %}
+              <div class="type-card {% if request.args.get('type') == key %}selected{% endif %}" onclick="selectType('{{ key }}')">
+                <span class="tc-icon">{{ icons[key] }}</span>
+                <div class="tc-label">{{ label.split(' ',1)[1] }}</div>
+              </div>
+              {% endfor %}
+            </div>
+            <input type="hidden" name="generation_type" id="generationTypeInput" value="{{ request.args.get('type', 'lesson_plan') }}" required>
+          </div>
+
+          <!-- Subject & Grade -->
+          <div class="grid-2">
+            <div class="form-group">
+              <label class="form-label">Subject *
+                {% if subjects_with_docs %}<span class="subject-hint"><i class="fas fa-database"></i> KB available</span>{% endif %}
+              </label>
+              <select name="subject" class="form-control" required>
+                <option value="">Choose subject</option>
+                {% for s in subjects %}
+                <option value="{{ s }}" {% if s in subjects_with_docs %}style="font-weight:600;color:var(--green)"{% endif %}>
+                  {{ s }}{% if s in subjects_with_docs %} ✓{% endif %}
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Grade Level *</label>
+              <select name="grade_level" class="form-control" required>
+                <option value="">Choose grade</option>
+                {% for g in grade_levels %}<option value="{{ g }}">{{ g }}</option>{% endfor %}
+              </select>
+            </div>
+          </div>
+
+          <!-- Topic -->
+          <div class="form-group">
+            <label class="form-label">Topic / Title *</label>
+            <input type="text" name="topic" class="form-control" placeholder="e.g. Fractions and Decimals, Photosynthesis, The Water Cycle..." required>
+          </div>
+
+          <!-- Extra -->
+          <div class="form-group">
+            <label class="form-label">Additional Instructions <span style="color:var(--mid);font-weight:400;">(optional)</span></label>
+            <textarea name="extra_instructions" class="form-control" rows="3" placeholder="e.g. Include 3 group activities, use simple language, focus on rural context..."></textarea>
+          </div>
+
+          <!-- LLM Selection -->
+          <div style="margin-bottom:20px;">
+            <div class="section-title">Select AI Model</div>
+            <div class="llm-grid">
+              {% set llm_icons = {'groq':'⚡','claude':'','chatgpt':'','gemini':'✨'} %}
+              {% for key, info in llms.items() %}
+              <div class="llm-card {% if key == current_llm %}selected{% endif %} {% if not info.available %}unavailable{% endif %}"
+                   onclick="{% if info.available %}selectLLM('{{ key }}'){% endif %}">
+                <div style="font-size:1.4rem;">{{ llm_icons[key] }}</div>
+                <div class="llm-name">{{ info.name.split('(')[0].strip() }}</div>
+                <div class="llm-status {% if info.available %}avail{% else %}unavail{% endif %}">
+                  {% if info.available %}● Active{% else %}○ No API Key{% endif %}
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+            <input type="hidden" name="llm_choice" id="llmChoiceInput" value="{{ current_llm or 'groq' }}">
+          </div>
+
+          <button type="submit" class="btn btn-primary btn-lg" style="width:100%;justify-content:center;">
+            <i class="fas fa-magic"></i> Generate Content
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: Info panel -->
+  <div style="display:flex;flex-direction:column;gap:16px;">
+    <div class="card">
+      <div class="card-header"><h3>💡 Tips</h3></div>
+      <div class="card-body" style="display:flex;flex-direction:column;gap:14px;">
+        <div style="font-size:0.85rem;">
+          <div style="font-weight:600;margin-bottom:4px;">Upload materials first</div>
+          <div style="color:var(--mid);">Documents you upload become the AI's knowledge base — generations will be grounded in your actual curriculum materials.</div>
+        </div>
+        <div style="height:1px;background:var(--border);"></div>
+        <div style="font-size:0.85rem;">
+          <div style="font-weight:600;margin-bottom:4px;">Be specific with topics</div>
+          <div style="color:var(--mid);">"Fractions — adding unlike denominators for Primary 4" gives better results than just "Fractions".</div>
+        </div>
+        <div style="height:1px;background:var(--border);"></div>
+        <div style="font-size:0.85rem;">
+          <div style="font-weight:600;margin-bottom:4px;">Translate after generating</div>
+          <div style="color:var(--mid);">Once generated, you can translate the content to Twi, Ga, Ewe, Dagbani, and more using Khaya AI.</div>
+        </div>
+      </div>
+    </div>
+    <div class="card" style="border-left:4px solid var(--gold);">
+      <div class="card-body">
+        <div style="font-size:0.82rem;color:var(--mid);">Subjects with uploaded documents are marked with <strong style="color:var(--green);">✓</strong> — the AI uses your materials for better, curriculum-aligned outputs.</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  function selectType(key) {
+    document.querySelectorAll('.type-card').forEach(c => c.classList.remove('selected'));
+    event.currentTarget.classList.add('selected');
+    document.getElementById('generationTypeInput').value = key;
+  }
+  function selectLLM(key) {
+    document.querySelectorAll('.llm-card').forEach(c => c.classList.remove('selected'));
+    event.currentTarget.classList.add('selected');
+    document.getElementById('llmChoiceInput').value = key;
+  }
+  // Pre-select from URL param
+  const urlType = new URLSearchParams(window.location.search).get('type');
+  if (urlType) selectTypeByKey(urlType);
+  function selectTypeByKey(key) {
+    document.querySelectorAll('.type-card').forEach((c, i) => {
+      const keys = ['lesson_plan','exam_questions','examples','explanation'];
+      if (keys[i] === key) c.classList.add('selected'); else c.classList.remove('selected');
+    });
+    document.getElementById('generationTypeInput').value = key;
+  }
+</script>
+{% endblock %}

@@ -1,0 +1,528 @@
+{% extends "base.html" %}
+{% block title %}Processing Document — EduAI Ghana{% endblock %}
+{% block page_title %}Building Knowledge Base{% endblock %}
+{% block extra_head %}
+<style>
+  .progress-wrap {
+    max-width: 720px;
+    margin: 0 auto;
+  }
+
+  /* ── File info banner ── */
+  .file-banner {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px 24px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 28px;
+    box-shadow: var(--shadow);
+  }
+  .file-icon {
+    width: 52px; height: 52px;
+    background: var(--gold-pale);
+    border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.5rem;
+    color: var(--gold);
+    flex-shrink: 0;
+  }
+  .file-meta { flex: 1; min-width: 0; }
+  .file-name { font-weight: 700; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .file-tags { margin-top: 6px; display: flex; gap: 8px; flex-wrap: wrap; }
+
+  /* ── Overall progress bar ── */
+  .overall-progress {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    margin-bottom: 20px;
+    box-shadow: var(--shadow);
+  }
+  .progress-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+  }
+  .progress-header .ph-label {
+    font-family: var(--font-display);
+    font-size: 1.05rem;
+  }
+  .progress-pct {
+    font-family: var(--font-mono);
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--gold);
+    transition: all 0.3s;
+  }
+  .progress-track {
+    height: 10px;
+    background: var(--light);
+    border-radius: 99px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--gold) 0%, var(--gold-light) 100%);
+    border-radius: 99px;
+    width: 0%;
+    transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .progress-fill.complete {
+    background: linear-gradient(90deg, var(--green) 0%, var(--green-light) 100%);
+  }
+  .progress-fill.error {
+    background: linear-gradient(90deg, var(--red) 0%, #e74c3c 100%);
+  }
+  .progress-subtext {
+    margin-top: 10px;
+    font-size: 0.82rem;
+    color: var(--mid);
+    min-height: 18px;
+    transition: all 0.3s;
+  }
+
+  /* ── Steps list ── */
+  .steps-card {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    box-shadow: var(--shadow);
+    margin-bottom: 20px;
+  }
+  .steps-card-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    font-family: var(--font-display);
+    font-size: 0.95rem;
+    background: var(--light);
+  }
+  .step-item {
+    display: flex;
+    gap: 16px;
+    padding: 18px 20px;
+    border-bottom: 1px solid var(--border);
+    transition: background 0.3s;
+    align-items: flex-start;
+  }
+  .step-item:last-child { border-bottom: none; }
+  .step-item.active { background: var(--gold-pale); }
+  .step-item.complete { background: var(--green-pale); }
+  .step-item.error-state { background: #fdecea; }
+
+  .step-icon {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.85rem;
+    font-weight: 700;
+    flex-shrink: 0;
+    border: 2px solid transparent;
+    transition: all 0.3s;
+  }
+  .step-icon.waiting {
+    background: var(--light);
+    border-color: var(--border);
+    color: var(--mid);
+  }
+  .step-icon.active {
+    background: var(--gold-pale);
+    border-color: var(--gold);
+    color: var(--gold);
+  }
+  .step-icon.spinning {
+    background: var(--gold-pale);
+    border-color: var(--gold);
+    animation: pulse-border 1.2s ease-in-out infinite;
+  }
+  .step-icon.done {
+    background: var(--green);
+    border-color: var(--green);
+    color: white;
+  }
+  .step-icon.error {
+    background: var(--red);
+    border-color: var(--red);
+    color: white;
+  }
+  @keyframes pulse-border {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(200,146,42,0.35); }
+    50% { box-shadow: 0 0 0 6px rgba(200,146,42,0); }
+  }
+
+  .step-body { flex: 1; min-width: 0; }
+  .step-title {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--dark);
+    margin-bottom: 4px;
+    transition: all 0.3s;
+  }
+  .step-item.waiting .step-title { color: var(--mid); }
+  .step-detail {
+    font-size: 0.82rem;
+    color: var(--mid);
+    line-height: 1.55;
+    min-height: 0;
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.4s ease, opacity 0.3s;
+    opacity: 0;
+  }
+  .step-item.active .step-detail,
+  .step-item.complete .step-detail {
+    max-height: 100px;
+    opacity: 1;
+  }
+  .step-item.active .step-detail { color: #7a5e1a; }
+  .step-item.complete .step-detail { color: var(--green); }
+  .step-item.error-state .step-detail { color: var(--red); opacity: 1; max-height: 100px; }
+
+  .step-time {
+    font-size: 0.72rem;
+    color: var(--mid);
+    font-family: var(--font-mono);
+    margin-top: 4px;
+  }
+
+  /* ── Inline spinner for active step icon ── */
+  .mini-spin {
+    display: inline-block;
+    width: 14px; height: 14px;
+    border: 2px solid rgba(200,146,42,0.3);
+    border-top-color: var(--gold);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+
+  /* ── Result card ── */
+  .result-card {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 28px;
+    box-shadow: var(--shadow);
+    display: none;
+    text-align: center;
+  }
+  .result-card.show { display: block; }
+  .result-card.success-card { border-left: 4px solid var(--green); }
+  .result-card.error-card { border-left: 4px solid var(--red); }
+
+  .result-icon { font-size: 3rem; margin-bottom: 12px; }
+  .result-title { font-family: var(--font-display); font-size: 1.4rem; margin-bottom: 8px; }
+  .result-subtitle { color: var(--mid); font-size: 0.9rem; margin-bottom: 24px; }
+
+  .stats-row {
+    display: flex;
+    justify-content: center;
+    gap: 32px;
+    margin: 20px 0;
+    flex-wrap: wrap;
+  }
+  .stat-pill {
+    text-align: center;
+    padding: 12px 20px;
+    background: var(--green-pale);
+    border-radius: var(--radius-sm);
+    min-width: 100px;
+  }
+  .stat-pill .sp-num {
+    font-family: var(--font-display);
+    font-size: 1.6rem;
+    color: var(--green);
+    line-height: 1;
+  }
+  .stat-pill .sp-label {
+    font-size: 0.72rem;
+    color: var(--mid);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-top: 4px;
+  }
+
+  .kente-success {
+    height: 5px;
+    background: repeating-linear-gradient(90deg, var(--gold) 0 12px, var(--green) 12px 24px, var(--red) 24px 36px);
+    border-radius: 3px;
+    margin: 20px 0;
+  }
+</style>
+{% endblock %}
+{% block content %}
+
+<div class="progress-wrap">
+
+  <!-- File info banner -->
+  <div class="file-banner">
+    <div class="file-icon">
+      {% if filename.endswith('.pdf') %}
+        <i class="fas fa-file-pdf"></i>
+      {% elif filename.endswith('.docx') %}
+        <i class="fas fa-file-word"></i>
+      {% else %}
+        <i class="fas fa-file-alt"></i>
+      {% endif %}
+    </div>
+    <div class="file-meta">
+      <div class="file-name">{{ filename }}</div>
+      <div class="file-tags">
+        <span class="badge badge-gold">{{ subject }}</span>
+        {% if grade_level %}<span class="badge badge-dark">{{ grade_level }}</span>{% endif %}
+        <span class="badge badge-dark">{{ filename.rsplit('.', 1)[-1].upper() }}</span>
+      </div>
+    </div>
+    <div style="font-size:0.8rem;color:var(--mid);text-align:right;flex-shrink:0;">
+      <div id="elapsed-label">Elapsed: <span id="elapsed">0s</span></div>
+    </div>
+  </div>
+
+  <!-- Overall progress -->
+  <div class="overall-progress">
+    <div class="progress-header">
+      <span class="ph-label" id="progressLabel">Preparing to process...</span>
+      <span class="progress-pct" id="progressPct">0%</span>
+    </div>
+    <div class="progress-track">
+      <div class="progress-fill" id="progressFill"></div>
+    </div>
+    <div class="progress-subtext" id="progressSubtext">Connecting to AI processing pipeline...</div>
+  </div>
+
+  <!-- Step-by-step breakdown -->
+  <div class="steps-card">
+    <div class="steps-card-header"><i class="fas fa-list-ol" style="color:var(--gold);margin-right:8px;"></i>Processing Steps</div>
+
+    {% set steps = [
+      (1, 'fas fa-file-import', 'Read & extract text', 'Parse your file and extract all readable text content.'),
+      (2, 'fas fa-cut',         'Split into chunks',   'Break text into overlapping 800-character knowledge segments.'),
+      (3, 'fas fa-brain',       'Generate embeddings', 'Convert each chunk into a 384-dimensional meaning vector.'),
+      (4, 'fas fa-database',    'Store in ChromaDB',   'Save all vectors into your personal knowledge base.'),
+      (5, 'fas fa-check-circle','Ready to use',        'AI has fully learned from your document.')
+    ] %}
+
+    {% for num, icon, title, desc in steps %}
+    <div class="step-item waiting" id="step-{{ num }}">
+      <div class="step-icon waiting" id="step-icon-{{ num }}">{{ num }}</div>
+      <div class="step-body">
+        <div class="step-title" id="step-title-{{ num }}">{{ title }}</div>
+        <div class="step-detail" id="step-detail-{{ num }}">{{ desc }}</div>
+        <div class="step-time" id="step-time-{{ num }}" style="display:none;"></div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Success / error result card -->
+  <div class="result-card" id="resultCard">
+    <div class="result-icon" id="resultIcon"></div>
+    <div class="result-title" id="resultTitle"></div>
+    <div class="result-subtitle" id="resultSubtitle"></div>
+    <div class="kente-success" id="kenteBar" style="display:none;"></div>
+    <div class="stats-row" id="statsRow" style="display:none;"></div>
+    <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:8px;" id="resultActions"></div>
+  </div>
+
+</div><!-- /progress-wrap -->
+
+{% endblock %}
+{% block scripts %}
+<script>
+  const FILENAME   = {{ filename|tojson }};
+  const SUBJECT    = {{ subject|tojson }};
+  const GRADE      = {{ grade_level|tojson }};
+  const SAVE_PATH  = {{ save_path|tojson }};
+  const USER_ID    = {{ user_id }};
+  const SAVE_URL   = '/documents/save';
+  const DOCS_URL   = '/documents';
+  const GEN_URL    = '/generate';
+
+  // Elapsed timer
+  const startTime = Date.now();
+  const elapsedEl = document.getElementById('elapsed');
+  const elapsedInterval = setInterval(() => {
+    const s = Math.round((Date.now() - startTime) / 1000);
+    elapsedEl.textContent = s < 60 ? s + 's' : Math.floor(s/60) + 'm ' + (s%60) + 's';
+  }, 500);
+
+  // Step timing
+  const stepStartTimes = {};
+
+  function setStepState(stepNum, state, label, detail) {
+    const item   = document.getElementById(`step-${stepNum}`);
+    const icon   = document.getElementById(`step-icon-${stepNum}`);
+    const title  = document.getElementById(`step-title-${stepNum}`);
+    const detEl  = document.getElementById(`step-detail-${stepNum}`);
+    const timeEl = document.getElementById(`step-time-${stepNum}`);
+
+    // Remove all state classes
+    item.classList.remove('active', 'complete', 'waiting', 'error-state');
+    icon.classList.remove('waiting', 'active', 'spinning', 'done', 'error');
+
+    if (state === 'active') {
+      item.classList.add('active');
+      icon.classList.add('spinning');
+      icon.innerHTML = '<span class="mini-spin"></span>';
+      stepStartTimes[stepNum] = Date.now();
+    } else if (state === 'done') {
+      item.classList.add('complete');
+      icon.classList.add('done');
+      icon.innerHTML = '<i class="fas fa-check" style="font-size:0.8rem;"></i>';
+      if (stepStartTimes[stepNum]) {
+        const elapsed = ((Date.now() - stepStartTimes[stepNum]) / 1000).toFixed(1);
+        timeEl.textContent = `Completed in ${elapsed}s`;
+        timeEl.style.display = 'block';
+      }
+    } else if (state === 'error') {
+      item.classList.add('error-state');
+      icon.classList.add('error');
+      icon.innerHTML = '<i class="fas fa-times" style="font-size:0.8rem;"></i>';
+    } else {
+      item.classList.add('waiting');
+      icon.classList.add('waiting');
+      icon.innerHTML = stepNum;
+    }
+
+    if (label)  title.textContent  = label;
+    if (detail) detEl.textContent  = detail;
+  }
+
+  function setProgress(pct, label, subtext, state) {
+    const fill    = document.getElementById('progressFill');
+    const pctEl   = document.getElementById('progressPct');
+    const labelEl = document.getElementById('progressLabel');
+    const subEl   = document.getElementById('progressSubtext');
+
+    fill.style.width = pct + '%';
+    pctEl.textContent = pct + '%';
+    fill.classList.remove('complete', 'error');
+    if (state === 'complete') fill.classList.add('complete');
+    if (state === 'error')    fill.classList.add('error');
+    if (label)  labelEl.textContent = label;
+    if (subtext) subEl.textContent  = subtext;
+  }
+
+  function showSuccess(data) {
+    clearInterval(elapsedInterval);
+    const card    = document.getElementById('resultCard');
+    const elapsed = Math.round((Date.now() - startTime) / 1000);
+
+    card.className = 'result-card show success-card';
+    document.getElementById('resultIcon').textContent   = '🎉';
+    document.getElementById('resultTitle').textContent  = 'Document fully processed!';
+    document.getElementById('resultSubtitle').textContent =
+      `"${FILENAME}" is now part of your ${SUBJECT} knowledge base. The AI will use it when you generate content.`;
+
+    document.getElementById('kenteBar').style.display = 'block';
+
+    const statsRow = document.getElementById('statsRow');
+    statsRow.style.display = 'flex';
+    statsRow.innerHTML = `
+      <div class="stat-pill">
+        <div class="sp-num">${(data.chunk_count||0).toLocaleString()}</div>
+        <div class="sp-label">Knowledge Chunks</div>
+      </div>
+      <div class="stat-pill">
+        <div class="sp-num">${(data.char_count||0).toLocaleString()}</div>
+        <div class="sp-label">Characters Read</div>
+      </div>
+      <div class="stat-pill">
+        <div class="sp-num">${data.page_count||'—'}</div>
+        <div class="sp-label">Pages Parsed</div>
+      </div>
+      <div class="stat-pill">
+        <div class="sp-num">${elapsed}s</div>
+        <div class="sp-label">Total Time</div>
+      </div>
+    `;
+
+    document.getElementById('resultActions').innerHTML = `
+      <a href="${GEN_URL}" class="btn btn-primary"><i class="fas fa-magic"></i> Generate Content Now</a>
+      <a href="${DOCS_URL}" class="btn btn-outline"><i class="fas fa-book-open"></i> View Knowledge Base</a>
+    `;
+
+    // Save the document record to the DB
+    fetch(SAVE_URL, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        filename: FILENAME,
+        subject: SUBJECT,
+        grade_level: GRADE,
+        save_path: SAVE_PATH,
+        collection_name: data.collection_name || '',
+        chunk_count: data.chunk_count || 0
+      })
+    });
+  }
+
+  function showError(message) {
+    clearInterval(elapsedInterval);
+    const card = document.getElementById('resultCard');
+    card.className = 'result-card show error-card';
+    document.getElementById('resultIcon').textContent   = '❌';
+    document.getElementById('resultTitle').textContent  = 'Processing failed';
+    document.getElementById('resultSubtitle').textContent = message || 'An unexpected error occurred.';
+    document.getElementById('resultActions').innerHTML = `
+      <a href="${DOCS_URL}" class="btn btn-outline"><i class="fas fa-arrow-left"></i> Back to Documents</a>
+    `;
+  }
+
+  // ── Start SSE stream ────────────────────────────────────────────────────────
+  const streamUrl = `/documents/ingest-stream?filename=${encodeURIComponent(FILENAME)}&subject=${encodeURIComponent(SUBJECT)}&grade_level=${encodeURIComponent(GRADE)}&save_path=${encodeURIComponent(SAVE_PATH)}`;
+
+  const evtSource = new EventSource(streamUrl);
+  let lastStep = 0;
+
+  evtSource.onmessage = function(e) {
+    let data;
+    try { data = JSON.parse(e.data); } catch { return; }
+
+    const stepNum = data.step;
+    const progress = data.progress || 0;
+
+    // Update overall progress bar
+    setProgress(progress, data.label, data.detail,
+      data.done && !data.error ? 'complete' : data.error ? 'error' : '');
+
+    if (data.error) {
+      // Mark current step as error
+      if (stepNum > 0) setStepState(stepNum, 'error', data.label, data.detail);
+      showError(data.detail || data.error);
+      evtSource.close();
+      return;
+    }
+
+    // Mark previous step done when we move to a new one
+    if (stepNum > lastStep && lastStep > 0) {
+      setStepState(lastStep, 'done');
+    }
+
+    if (stepNum > 0 && stepNum <= 5) {
+      if (data.done && stepNum === 5) {
+        setStepState(stepNum, 'done', data.label, data.detail);
+      } else {
+        setStepState(stepNum, 'active', data.label, data.detail);
+      }
+      lastStep = stepNum;
+    }
+
+    if (data.done && !data.error) {
+      evtSource.close();
+      showSuccess(data);
+    }
+  };
+
+  evtSource.onerror = function() {
+    evtSource.close();
+    showError('Connection to processing server lost. Please try again.');
+    clearInterval(elapsedInterval);
+  };
+</script>
+{% endblock %}

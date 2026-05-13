@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Login — EduAI Ghana{% endblock %}
+{% block auth_content %}
+<style>
+  body { display: block; background: var(--dark); min-height: 100vh; }
+  .auth-page {
+    min-height: 100vh;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+  .auth-left {
+    background: linear-gradient(160deg, var(--dark) 0%, var(--dark-2) 100%);
+    padding: 60px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    position: relative;
+    overflow: hidden;
+  }
+  .auth-left::before {
+    content: '';
+    position: absolute;
+    top: -80px; right: -80px;
+    width: 400px; height: 400px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(200,146,42,0.15) 0%, transparent 70%);
+  }
+  .auth-kente {
+    height: 6px;
+    background: repeating-linear-gradient(90deg, var(--gold) 0 16px, var(--green) 16px 32px, var(--red) 32px 48px, var(--gold-light) 48px 64px);
+    border-radius: 3px;
+    margin-bottom: 60px;
+  }
+  .auth-brand { font-family: var(--font-display); font-size: 2.8rem; color: var(--gold-light); line-height: 1.1; }
+  .auth-tagline { font-size: 1.05rem; color: rgba(255,255,255,0.5); margin-top: 16px; line-height: 1.6; }
+  .auth-features { list-style: none; margin-top: 40px; display: flex; flex-direction: column; gap: 18px; }
+  .auth-features li { display: flex; align-items: center; gap: 14px; color: rgba(255,255,255,0.65); font-size: 0.9rem; }
+  .auth-features li .feat-icon { width: 38px; height: 38px; border-radius: 10px; background: rgba(200,146,42,0.18); display: flex; align-items: center; justify-content: center; color: var(--gold-light); flex-shrink: 0; }
+  .auth-footer { color: rgba(255,255,255,0.25); font-size: 0.78rem; }
+  .auth-right {
+    background: var(--light);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 48px;
+  }
+  .auth-form-wrap { width: 100%; max-width: 420px; }
+  .auth-form-wrap h2 { font-family: var(--font-display); font-size: 2rem; color: var(--dark); margin-bottom: 6px; }
+  .auth-form-wrap p { color: var(--mid); font-size: 0.9rem; margin-bottom: 36px; }
+  .auth-form-wrap .btn-primary { width: 100%; justify-content: center; padding: 13px; font-size: 0.95rem; }
+  .auth-switch { text-align: center; margin-top: 24px; font-size: 0.87rem; color: var(--mid); }
+  .auth-switch a { color: var(--gold); font-weight: 600; text-decoration: none; }
+  @media(max-width:768px) { .auth-page { grid-template-columns: 1fr; } .auth-left { display: none; } }
+</style>
+<div class="auth-page">
+  <div class="auth-left">
+    <div>
+      <div class="auth-kente"></div>
+      <div class="auth-brand">EduAI<br>Ghana</div>
+      <div class="auth-tagline">AI-powered teaching assistant for<br>Ghanaian primary & JHS teachers.</div>
+      <ul class="auth-features">
+        <li><div class="feat-icon"><i class="fas fa-brain"></i></div> Generate lesson plans & exam questions with AI</li>
+        <li><div class="feat-icon"><i class="fas fa-language"></i></div> Translate content to Ghanaian languages</li>
+        <li><div class="feat-icon"><i class="fas fa-volume-up"></i></div> Text-to-speech in local languages</li>
+        <li><div class="feat-icon"><i class="fas fa-book"></i></div> Upload your own materials as knowledge base</li>
+      </ul>
+    </div>
+    <div class="auth-footer">© 2025 EduAI Ghana · Powered by Khaya AI</div>
+  </div>
+  <div class="auth-right">
+    <div class="auth-form-wrap">
+      <h2>Welcome back</h2>
+      <p>Sign in to your teacher account</p>
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }}"><i class="fas fa-exclamation-circle"></i> {{ message }}</div>
+        {% endfor %}
+      {% endwith %}
+      <form method="POST" action="{{ url_for('auth.login') }}">
+        <div class="form-group">
+          <label class="form-label">Email Address</label>
+          <input type="email" name="email" class="form-control" placeholder="teacher@school.edu.gh" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Password</label>
+          <input type="password" name="password" class="form-control" placeholder="Enter your password" required>
+        </div>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-sign-in-alt"></i> Sign In</button>
+      </form>
+      <div class="auth-switch">Don't have an account? <a href="{{ url_for('auth.register') }}">Create one</a></div>
+    </div>
+  </div>
+</div>
+{% endblock %}

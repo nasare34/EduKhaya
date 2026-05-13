@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Register — EduAI Ghana{% endblock %}
+{% block auth_content %}
+<style>
+  body { display: block; background: var(--dark); min-height: 100vh; }
+  .auth-page { min-height: 100vh; display: grid; grid-template-columns: 1fr 1.2fr; }
+  .auth-left { background: linear-gradient(160deg, var(--dark) 0%, var(--dark-2) 100%); padding: 60px; display: flex; flex-direction: column; justify-content: center; position: relative; overflow: hidden; }
+  .auth-left::before { content: ''; position: absolute; bottom: -80px; left: -80px; width: 350px; height: 350px; border-radius: 50%; background: radial-gradient(circle, rgba(26,107,58,0.2) 0%, transparent 70%); }
+  .auth-kente { height: 6px; background: repeating-linear-gradient(90deg, var(--gold) 0 16px, var(--green) 16px 32px, var(--red) 32px 48px, var(--gold-light) 48px 64px); border-radius: 3px; margin-bottom: 48px; }
+  .auth-brand { font-family: var(--font-display); font-size: 2.6rem; color: var(--gold-light); line-height: 1.1; }
+  .auth-tagline { font-size: 1rem; color: rgba(255,255,255,0.45); margin-top: 16px; line-height: 1.6; }
+  .auth-right { background: var(--light); display: flex; align-items: center; justify-content: center; padding: 48px; }
+  .auth-form-wrap { width: 100%; max-width: 480px; }
+  .auth-form-wrap h2 { font-family: var(--font-display); font-size: 1.9rem; color: var(--dark); margin-bottom: 6px; }
+  .auth-form-wrap p { color: var(--mid); font-size: 0.9rem; margin-bottom: 32px; }
+  .auth-form-wrap .btn-primary { width: 100%; justify-content: center; padding: 13px; }
+  .auth-switch { text-align: center; margin-top: 20px; font-size: 0.87rem; color: var(--mid); }
+  .auth-switch a { color: var(--gold); font-weight: 600; text-decoration: none; }
+  @media(max-width:768px) { .auth-page { grid-template-columns: 1fr; } .auth-left { display: none; } }
+</style>
+<div class="auth-page">
+  <div class="auth-left">
+    <div>
+      <div class="auth-kente"></div>
+      <div class="auth-brand">Join<br>EduAI Ghana</div>
+      <div class="auth-tagline">Create your free teacher account and start generating AI-powered educational content in minutes.</div>
+    </div>
+  </div>
+  <div class="auth-right">
+    <div class="auth-form-wrap">
+      <h2>Create Account</h2>
+      <p>Register as a teacher to get started</p>
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      {% endwith %}
+      <form method="POST" action="{{ url_for('auth.register') }}">
+        <div class="grid-2">
+          <div class="form-group">
+            <label class="form-label">Full Name *</label>
+            <input type="text" name="name" class="form-control" placeholder="Kwame Mensah" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Email *</label>
+            <input type="email" name="email" class="form-control" placeholder="you@school.edu.gh" required>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Password *</label>
+          <input type="password" name="password" class="form-control" placeholder="Choose a strong password" required minlength="6">
+        </div>
+        <div class="grid-2">
+          <div class="form-group">
+            <label class="form-label">School Name</label>
+            <input type="text" name="school" class="form-control" placeholder="Accra Primary School">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Region</label>
+            <input type="text" name="region" class="form-control" placeholder="Greater Accra">
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-lg"><i class="fas fa-user-plus"></i> Create My Account</button>
+      </form>
+      <div class="auth-switch">Already have an account? <a href="{{ url_for('auth.login') }}">Sign in</a></div>
+    </div>
+  </div>
+</div>
+{% endblock %}

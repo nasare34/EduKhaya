@@ -1,0 +1,30 @@
+flask==3.0.3
+fastapi==0.111.0
+uvicorn==0.30.1
+python-multipart==0.0.9
+sqlalchemy==2.0.30
+flask-sqlalchemy==3.1.1
+flask-login==0.6.3
+flask-bcrypt==1.0.1
+flask-wtf==1.2.1
+wtforms==3.1.2
+chromadb==0.5.3
+langchain==0.2.5
+langchain-groq==0.1.6
+langchain-community==0.2.5
+langchain-text-splitters==0.2.2
+groq==0.9.0
+sentence-transformers==3.0.1
+pypdf==4.2.0
+python-docx==1.1.2
+requests==2.32.3
+python-dotenv==1.0.1
+httpx==0.27.0
+pydantic==2.7.4
+email-validator==2.2.0
+werkzeug==3.0.3
+# Image OCR support
+Pillow==10.4.0
+pytesseract==0.3.13
+# PDF image fallback (scanned PDFs)
+PyMuPDF==1.24.9

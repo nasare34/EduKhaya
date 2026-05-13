@@ -1,0 +1,310 @@
+{% extends "base.html" %}
+{% block title %}Result — EduAI Ghana{% endblock %}
+{% block page_title %}{{ generation_types.get(generation.generation_type, generation.generation_type) }}{% endblock %}
+{% block topbar_actions %}
+<a href="{{ url_for('generate.index') }}" class="btn btn-outline btn-sm"><i class="fas fa-plus"></i> New</a>
+<a href="{{ url_for('generate.history') }}" class="btn btn-outline btn-sm"><i class="fas fa-history"></i> History</a>
+{% endblock %}
+{% block extra_head %}
+<style>
+  .result-meta { display:flex; flex-wrap:wrap; gap:10px; margin-bottom:20px; align-items:center; }
+  .content-box {
+    background:var(--white); border:1px solid var(--border); border-radius:var(--radius);
+    padding:32px; line-height:1.8; font-size:0.92rem; color:var(--dark);
+    box-shadow:var(--shadow); white-space:pre-wrap; min-height:200px;
+  }
+
+  /* ── Translation panel ── */
+  .khaya-panel {
+    background:var(--white); border:1px solid var(--border);
+    border-radius:var(--radius); overflow:hidden; box-shadow:var(--shadow);
+    margin-top:24px;
+  }
+  .khaya-panel .kp-header {
+    padding:16px 22px; display:flex; align-items:center; gap:10px;
+    border-bottom:1px solid var(--border);
+  }
+  .kp-header.translate-hdr { background:var(--gold-pale); }
+  .kp-header.tts-hdr { background:var(--dark); }
+  .kp-header h4 { font-family:var(--font-display); font-size:1rem; }
+  .kp-header.tts-hdr h4 { color:white; }
+  .kp-badge { font-size:0.7rem; padding:2px 8px; border-radius:10px; background:rgba(200,146,42,0.15); color:var(--gold); font-weight:600; margin-left:auto; }
+  .kp-header.tts-hdr .kp-badge { background:rgba(255,255,255,0.12); color:rgba(255,255,255,0.7); }
+
+  .lang-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; padding:20px; }
+  .lang-btn {
+    padding:10px 8px; border:1.5px solid var(--border); border-radius:var(--radius-sm);
+    background:var(--white); cursor:pointer; text-align:center;
+    font-size:0.78rem; font-weight:600; transition:all 0.2s; font-family:var(--font-body);
+  }
+  .lang-btn:hover { border-color:var(--gold); color:var(--gold); background:var(--gold-pale); }
+  .lang-btn.active { border-color:var(--gold); background:var(--gold); color:white; }
+
+  .translated-section { display:none; padding:20px; border-top:1px solid var(--border); }
+  .translated-section.show { display:block; }
+  .translated-content {
+    background:var(--light); border-radius:var(--radius-sm);
+    padding:20px; white-space:pre-wrap; font-size:0.9rem; line-height:1.7;
+  }
+
+  /* ── TTS panel ── */
+  .tts-controls {
+    padding:20px 22px;
+    display:flex; flex-wrap:wrap; gap:14px; align-items:flex-end;
+  }
+  .tts-controls .form-group { margin:0; min-width:160px; }
+  .tts-controls .form-label { color:rgba(255,255,255,0.55); }
+  .tts-controls .form-control { background:rgba(255,255,255,0.08); border-color:rgba(255,255,255,0.18); color:white; }
+  .tts-controls .form-control option { background:var(--dark-2); color:white; }
+  .tts-generate-btn {
+    background:var(--gold); color:white; border:none; border-radius:var(--radius-sm);
+    padding:11px 20px; font-weight:600; font-size:0.88rem; cursor:pointer;
+    display:flex; align-items:center; gap:8px; transition:all 0.2s;
+    font-family:var(--font-body); align-self:flex-end;
+  }
+  .tts-generate-btn:hover { background:var(--gold-light); transform:translateY(-1px); }
+  .tts-generate-btn:disabled { opacity:0.5; cursor:not-allowed; transform:none; }
+  .audio-player { padding:0 22px 20px; }
+  audio { width:100%; border-radius:8px; }
+  .tts-note { padding:12px 22px; font-size:0.78rem; color:rgba(255,255,255,0.35); border-top:1px solid rgba(255,255,255,0.08); }
+
+  @media(max-width:600px){ .lang-grid{ grid-template-columns:repeat(2,1fr); } .tts-controls{ flex-direction:column; } }
+</style>
+{% endblock %}
+{% block content %}
+
+<div class="result-meta">
+  <span class="badge badge-gold">{{ generation.subject }}</span>
+  <span class="badge badge-dark">{{ generation.grade_level }}</span>
+  <span class="badge badge-green">{{ generation.llm_used }}</span>
+  <span style="color:var(--mid);font-size:0.8rem;margin-left:auto;">{{ generation.created_at.strftime('%B %d, %Y · %H:%M') }}</span>
+</div>
+
+<div style="margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+  <div style="font-family:var(--font-display);font-size:1.05rem;">Topic: <em>{{ generation.prompt }}</em></div>
+  <div style="display:flex;gap:8px;">
+    <button class="btn btn-outline btn-sm" onclick="copyContent()"><i class="fas fa-copy"></i> Copy</button>
+    <button class="btn btn-outline btn-sm" onclick="window.print()"><i class="fas fa-print"></i> Print</button>
+  </div>
+</div>
+
+<!-- Generated content -->
+<div class="content-box" id="englishContent">{{ content }}</div>
+
+<!-- ═══════════════════ TRANSLATION PANEL ════════════════════════ -->
+<div class="khaya-panel">
+  <div class="kp-header translate-hdr">
+    <span style="font-size:1.2rem;">🌍</span>
+    <h4>Translate Content</h4>
+    <span class="kp-badge">Khaya AI Translation API v2</span>
+  </div>
+
+  <!-- Language picker — Translation API languages only -->
+  <div class="lang-grid">
+    {% for code, name in translation_languages.items() %}
+    {% if code != 'en' %}
+    <button class="lang-btn" data-lang="{{ code }}" onclick="translateTo('{{ code }}', '{{ name }}')">{{ name }}</button>
+    {% endif %}
+    {% endfor %}
+  </div>
+
+  <!-- Translated output -->
+  <div class="translated-section" id="translatedSection">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+      <div style="font-weight:600;font-size:0.9rem;" id="translatedLangLabel"></div>
+      <button class="btn btn-outline btn-sm" onclick="copyTranslated()"><i class="fas fa-copy"></i> Copy</button>
+    </div>
+    <div class="translated-content" id="translatedContent"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════ TTS PANEL ═══════════════════════════════ -->
+<div class="khaya-panel">
+  <div class="kp-header tts-hdr">
+    <span style="font-size:1.2rem;">🔊</span>
+    <h4>Text to Speech</h4>
+    <span class="kp-badge">Khaya AI TTS API v2</span>
+  </div>
+
+  <div class="tts-controls">
+    <!-- TTS uses its own language set (32+ languages, different codes) -->
+    <div class="form-group">
+      <label class="form-label" style="color:rgba(255,255,255,0.55);">Language</label>
+      <select id="ttsLangSelect" class="form-control">
+        {% for code, name in tts_languages.items() %}
+        <option value="{{ code }}" {% if code == 'twi' %}selected{% endif %}>{{ name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" style="color:rgba(255,255,255,0.55);">Voice</label>
+      <select id="ttsSpeakerSelect" class="form-control">
+        {% for spk in tts_speakers %}
+        <option value="{{ spk }}" {% if spk == 'female' %}selected{% endif %}>
+          {{ spk.replace('_', ' ').title() }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" style="color:rgba(255,255,255,0.55);">Format</label>
+      <select id="ttsFormatSelect" class="form-control">
+        <option value="mp3" selected>MP3</option>
+        <option value="wav">WAV</option>
+        <option value="ogg">OGG</option>
+      </select>
+    </div>
+
+    <div class="form-group" style="flex:1;">
+      <label class="form-label" style="color:rgba(255,255,255,0.55);">Text source</label>
+      <select id="ttsSourceSelect" class="form-control">
+        <option value="english">Original (English)</option>
+        <option value="translated" id="ttsTranslatedOpt" disabled>Translated text</option>
+      </select>
+    </div>
+
+    <button class="tts-generate-btn" id="ttsBtn" onclick="generateTTS()">
+      <i class="fas fa-play"></i> Generate Audio
+    </button>
+  </div>
+
+  <div id="audioPlayer" style="display:none;" class="audio-player">
+    <audio controls id="audioElement"></audio>
+  </div>
+  <div class="tts-note">
+    First 1500 characters are synthesized. For best results, translate the content and use the translated version.
+  </div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+  const GEN_ID = {{ generation.id }};
+  let translatedText = '';
+  let currentTranslationLang = '';
+
+  // ── Translation ────────────────────────────────────────────────
+  function translateTo(langCode, langName) {
+    document.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('active'));
+    document.querySelector(`[data-lang="${langCode}"]`).classList.add('active');
+    currentTranslationLang = langCode;
+
+    showLoading(`Translating to ${langName} via Khaya AI...`);
+    const text = document.getElementById('englishContent').textContent;
+
+    fetch('/generate/translate', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({generation_id: GEN_ID, target_lang: langCode, text})
+    })
+    .then(r => r.json())
+    .then(data => {
+      hideLoading();
+      if (data.success) {
+        translatedText = data.translated_text;
+        document.getElementById('translatedContent').textContent = translatedText;
+        document.getElementById('translatedLangLabel').textContent = `🌍 ${langName}`;
+        document.getElementById('translatedSection').classList.add('show');
+        // Enable "Translated text" TTS source option
+        document.getElementById('ttsTranslatedOpt').disabled = false;
+        document.getElementById('ttsSourceSelect').value = 'translated';
+        // Auto-select matching TTS language if possible
+        autoSelectTTSLang(langCode);
+        document.getElementById('audioPlayer').style.display = 'none';
+        document.getElementById('ttsBtn').innerHTML = '<i class="fas fa-play"></i> Generate Audio';
+      } else {
+        alert('Translation error: ' + (data.error || 'Unknown error'));
+      }
+    })
+    .catch(e => { hideLoading(); alert('Network error: ' + e.message); });
+  }
+
+  // Map translation codes -> TTS codes for auto-select
+  const TRANS_TO_TTS = {
+    tw: 'twi', ee: 'ewe', gaa: 'gaa', fat: 'fat',
+    yo: 'yor', dag: 'dag', ki: 'kik', gur: 'gur',
+    luo: 'luo', mer: 'mer', kus: 'kus'
+  };
+
+  function autoSelectTTSLang(translationCode) {
+    const ttsCode = TRANS_TO_TTS[translationCode];
+    if (ttsCode) {
+      const sel = document.getElementById('ttsLangSelect');
+      for (let opt of sel.options) {
+        if (opt.value === ttsCode) { sel.value = ttsCode; break; }
+      }
+    }
+  }
+
+  // ── TTS ────────────────────────────────────────────────────────
+  function generateTTS() {
+    const ttsLang   = document.getElementById('ttsLangSelect').value;
+    const speakerId = document.getElementById('ttsSpeakerSelect').value;
+    const fmt       = document.getElementById('ttsFormatSelect').value;
+    const src       = document.getElementById('ttsSourceSelect').value;
+
+    const useText = (src === 'translated' && translatedText)
+      ? translatedText
+      : document.getElementById('englishContent').textContent;
+
+    if (!useText.trim()) { alert('No text to synthesize.'); return; }
+
+    const btn = document.getElementById('ttsBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
+    showLoading('Generating audio via Khaya AI TTS...');
+
+    fetch('/generate/tts', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        generation_id: GEN_ID,
+        text: useText,
+        language: ttsLang,
+        speaker_id: speakerId,
+        format: fmt
+      })
+    })
+    .then(r => r.json())
+    .then(data => {
+      hideLoading();
+      btn.disabled = false;
+      if (data.success && data.audio_url) {
+        document.getElementById('audioElement').src = data.audio_url;
+        document.getElementById('audioPlayer').style.display = 'block';
+        btn.innerHTML = '<i class="fas fa-sync"></i> Regenerate Audio';
+      } else {
+        btn.innerHTML = '<i class="fas fa-play"></i> Generate Audio';
+        alert('TTS error: ' + (data.error || 'Khaya AI TTS unavailable for this language'));
+      }
+    })
+    .catch(e => {
+      hideLoading();
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-play"></i> Generate Audio';
+      alert('Network error: ' + e.message);
+    });
+  }
+
+  // ── Copy helpers ───────────────────────────────────────────────
+  function copyContent() {
+    navigator.clipboard.writeText(document.getElementById('englishContent').textContent)
+      .then(() => {
+        const b = event.target.closest('button');
+        b.innerHTML = '<i class="fas fa-check"></i> Copied!';
+        setTimeout(() => b.innerHTML = '<i class="fas fa-copy"></i> Copy', 2000);
+      });
+  }
+  function copyTranslated() {
+    if (!translatedText) return;
+    navigator.clipboard.writeText(translatedText)
+      .then(() => {
+        const b = event.target.closest('button');
+        b.innerHTML = '<i class="fas fa-check"></i> Copied!';
+        setTimeout(() => b.innerHTML = '<i class="fas fa-copy"></i> Copy', 2000);
+      });
+  }
+</script>
+{% endblock %}
