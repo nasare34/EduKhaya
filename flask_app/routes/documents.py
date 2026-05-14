@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, request, flash, redirect, url_for, current_app, jsonify, Response
 from flask_login import login_required, current_user
-import os, requests, json
+import os, requests, json, threading
 from werkzeug.utils import secure_filename
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
@@ -21,19 +21,44 @@ GRADE_LEVELS = [
     "JHS 1", "JHS 2", "JHS 3"
 ]
 
+# In-memory job store: job_id -> status dict
+_jobs = {}
+
+def _run_ingest(job_id, save_path, filename, uid, subject, grade_level):
+    """Run in background thread — calls FastAPI /ingest and updates job status."""
+    try:
+        _jobs[job_id] = {"status": "reading", "label": "Reading your file...", "progress": 10, "done": False, "error": None}
+        with open(save_path, 'rb') as f:
+            _jobs[job_id] = {"status": "embedding", "label": "Splitting and embedding content...", "progress": 40, "done": False, "error": None}
+            resp = requests.post(
+                f"{FASTAPI_URL}/ingest",
+                data={"user_id": uid, "subject": subject, "grade_level": grade_level},
+                files={"file": (filename, f, 'application/octet-stream')},
+                timeout=300
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+        _jobs[job_id] = {
+            "status": "done", "label": "Ready to use!", "progress": 100,
+            "done": True, "error": None,
+            "collection_name": data.get("collection_name", ""),
+            "chunk_count": data.get("chunk_count", 0),
+        }
+    except Exception as e:
+        _jobs[job_id] = {"status": "error", "label": "Processing failed", "progress": 0, "done": True, "error": str(e)}
+
+
 @docs_bp.route('/documents')
 @login_required
 def index():
-    docs = Document.query.filter_by(user_id=current_user.id)\
-        .order_by(Document.uploaded_at.desc()).all()
-    return render_template('documents/index.html', docs=docs,
-                           subjects=SUBJECTS, grade_levels=GRADE_LEVELS)
+    docs = Document.query.filter_by(user_id=current_user.id).order_by(Document.uploaded_at.desc()).all()
+    return render_template('documents/index.html', docs=docs, subjects=SUBJECTS, grade_levels=GRADE_LEVELS)
 
 
 @docs_bp.route('/documents/upload', methods=['POST'])
 @login_required
 def upload():
-    """Save file to disk and redirect to the streaming progress page."""
     if 'file' not in request.files:
         flash('No file selected.', 'danger')
         return redirect(url_for('documents.index'))
@@ -48,7 +73,7 @@ def upload():
 
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in ALLOWED_EXTENSIONS:
-        flash(f'File type not allowed. Use: {", ".join(ALLOWED_EXTENSIONS)}', 'danger')
+        flash(f'File type not allowed.', 'danger')
         return redirect(url_for('documents.index'))
 
     if not subject:
@@ -56,99 +81,54 @@ def upload():
         return redirect(url_for('documents.index'))
 
     filename = secure_filename(file.filename)
-    save_path = os.path.join(current_app.config['UPLOAD_FOLDER'],
-                             f"{current_user.id}_{filename}")
+    save_path = os.path.join(current_app.config['UPLOAD_FOLDER'], f"{current_user.id}_{filename}")
     file.save(save_path)
 
-    # Store pending info in session-like query params, render progress page
+    # Create job and start background thread
+    import uuid
+    job_id = str(uuid.uuid4())[:12]
+    uid = current_user.id
+    _jobs[job_id] = {"status": "starting", "label": "Starting...", "progress": 5, "done": False, "error": None}
+
+    t = threading.Thread(
+        target=_run_ingest,
+        args=(job_id, save_path, filename, uid, subject, grade_level),
+        daemon=True
+    )
+    t.start()
+
     return render_template(
         'documents/progress.html',
         filename=filename,
         subject=subject,
         grade_level=grade_level,
         save_path=save_path,
-        user_id=current_user.id
+        user_id=uid,
+        job_id=job_id
     )
 
 
-@docs_bp.route('/documents/ingest-stream')
+@docs_bp.route('/documents/job-status/<job_id>')
 @login_required
-def ingest_stream():
-    """
-    Flask SSE proxy — streams events from FastAPI /ingest/stream to the browser.
-    Query params: filename, subject, grade_level, save_path, user_id
-    """
-    filename    = request.args.get('filename', '')
-    subject     = request.args.get('subject', '')
-    grade_level = request.args.get('grade_level', '')
-    save_path   = request.args.get('save_path', '')
-
-    # ── Capture user_id as a plain int NOW, before the generator runs ────────
-    # current_user is a Flask-Login proxy tied to the request context.
-    # The generator runs lazily after the response starts streaming, at which
-    # point the request context (and therefore current_user) is gone.
-    # Capturing it into a plain variable here keeps it alive in the closure.
-    uid = current_user.id
-
-    if not save_path or not os.path.exists(save_path):
-        def err():
-            yield f"data: {json.dumps({'done': True, 'error': 'Uploaded file not found on server. Please try uploading again.'})}\n\n"
-        return Response(err(), mimetype='text/event-stream')
-
-    def generate():
-        try:
-            with open(save_path, 'rb') as f:
-                resp = requests.post(
-                    f"{FASTAPI_URL}/ingest/stream",
-                    data={
-                        "user_id": uid,        # plain int, not current_user.id
-                        "subject": subject,
-                        "grade_level": grade_level
-                    },
-                    files={"file": (filename, f, 'application/octet-stream')},
-                    stream=True,
-                    timeout=300
-                )
-                resp.raise_for_status()
-                for line in resp.iter_lines():
-                    if line:
-                        decoded = line.decode('utf-8')
-                        yield f"{decoded}\n\n"
-        except Exception as e:
-            yield f"data: {json.dumps({'done': True, 'error': str(e)})}\n\n"
-
-    return Response(
-        generate(),
-        mimetype='text/event-stream',
-        headers={
-            'Cache-Control': 'no-cache',
-            'X-Accel-Buffering': 'no',
-            'Connection': 'keep-alive',
-        }
-    )
+def job_status(job_id):
+    """Poll endpoint — returns current job status as JSON."""
+    status = _jobs.get(job_id, {"status": "unknown", "label": "Job not found", "progress": 0, "done": True, "error": "Job not found"})
+    return jsonify(status)
 
 
 @docs_bp.route('/documents/save', methods=['POST'])
 @login_required
 def save_document():
-    """Called by JS after streaming completes — persists the document record to DB."""
     data = request.get_json()
-    filename        = data.get('filename', '')
-    subject         = data.get('subject', '')
-    grade_level     = data.get('grade_level', '')
-    save_path       = data.get('save_path', '')
-    collection_name = data.get('collection_name', '')
-    chunk_count     = data.get('chunk_count', 0)
-
     try:
         doc = Document(
             user_id=current_user.id,
-            filename=filename,
-            subject=subject,
-            grade_level=grade_level,
-            file_path=save_path,
-            chroma_collection=collection_name,
-            chunk_count=chunk_count
+            filename=data.get('filename', ''),
+            subject=data.get('subject', ''),
+            grade_level=data.get('grade_level', ''),
+            file_path=data.get('save_path', ''),
+            chroma_collection=data.get('collection_name', ''),
+            chunk_count=data.get('chunk_count', 0)
         )
         db.session.add(doc)
         db.session.commit()
@@ -176,7 +156,7 @@ def delete_all():
                 pass
             db.session.delete(doc)
         db.session.commit()
-        flash(f'All {count} documents and their knowledge bases deleted.', 'success')
+        flash(f'All {count} documents deleted.', 'success')
     except Exception as e:
         flash(f'Error: {str(e)}', 'danger')
     return redirect(url_for('documents.index'))
