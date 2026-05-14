@@ -1,5 +1,32 @@
+# Environment — never commit secrets
 .env
-.env
+
+# Python
 __pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+env/
+.venv/
+
+# Database and vector store
+*.db
+chroma_db/
+
+# Uploaded files and generated audio
+flask_app/static/uploads/
+flask_app/static/audio/
+
+# macOS
 .DS_Store
-.env
+
+# IDE
+.vscode/
+.idea/
+
+# Build
+*.egg-info/
+dist/
+build/

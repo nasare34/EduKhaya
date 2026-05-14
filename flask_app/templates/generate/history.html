@@ -3,16 +3,64 @@
 {% block page_title %}Generation History{% endblock %}
 {% block topbar_actions %}
 <a href="{{ url_for('generate.index') }}" class="btn btn-primary"><i class="fas fa-magic"></i> New Generation</a>
+{% if generations %}
+<button class="btn btn-outline btn-sm" style="color:var(--red);border-color:rgba(192,57,43,0.3);"
+  onclick="openDeleteModal('all', null, 'all {{ generations|length }} generations')">
+  <i class="fas fa-trash"></i> Clear All
+</button>
+{% endif %}
+{% endblock %}
+{% block extra_head %}
+<style>
+  .pill-lesson_plan { background:#e8f4fd; color:#1a6b9e; }
+  .pill-exam_questions { background:#fde8e8; color:#9e1a1a; }
+  .pill-examples { background:var(--gold-pale); color:var(--gold); }
+  .pill-explanation { background:var(--green-pale); color:var(--green); }
+  .gen-type-pill { display:inline-block; padding:3px 10px; border-radius:20px; font-size:0.72rem; font-weight:600; }
+
+  .del-btn {
+    opacity: 0;
+    transition: opacity 0.15s;
+    background: transparent;
+    border: 1.5px solid rgba(192,57,43,0.3);
+    color: var(--red);
+    border-radius: var(--radius-sm);
+    padding: 5px 10px;
+    cursor: pointer;
+    font-size: 0.78rem;
+    font-family: var(--font-body);
+    white-space: nowrap;
+  }
+  tr:hover .del-btn { opacity: 1; }
+  .del-btn:hover { background: #fdecea; border-color: var(--red); }
+
+  /* ── Confirm modal ── */
+  .confirm-modal {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(26,26,46,0.6);
+    z-index: 600;
+    align-items: center;
+    justify-content: center;
+  }
+  .confirm-modal.open { display: flex; }
+  .confirm-box {
+    background: var(--white);
+    border-radius: var(--radius);
+    padding: 36px;
+    max-width: 420px;
+    width: 100%;
+    box-shadow: var(--shadow-lg);
+    text-align: center;
+  }
+  .confirm-box .ci { font-size: 2.5rem; margin-bottom: 12px; }
+  .confirm-box h3 { font-family: var(--font-display); font-size: 1.3rem; margin-bottom: 8px; }
+  .confirm-box p { color: var(--mid); font-size: 0.88rem; margin-bottom: 28px; line-height: 1.5; }
+  .confirm-actions { display: flex; gap: 12px; justify-content: center; }
+</style>
 {% endblock %}
 {% block content %}
-<style>
-  .pill-lesson_plan { background: #e8f4fd; color: #1a6b9e; }
-  .pill-exam_questions { background: #fde8e8; color: #9e1a1a; }
-  .pill-examples { background: var(--gold-pale); color: var(--gold); }
-  .pill-explanation { background: var(--green-pale); color: var(--green); }
-  .gen-type-pill { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 0.72rem; font-weight: 600; }
-  .history-row:hover td { background: var(--gold-pale); cursor: pointer; }
-</style>
+
 <div class="card">
   <div class="card-body" style="padding:0;">
     {% if generations %}
@@ -26,25 +74,37 @@
           <th>Language</th>
           <th>AI Model</th>
           <th>Date</th>
-          <th></th>
+          <th style="width:90px;"></th>
         </tr>
       </thead>
       <tbody>
         {% for g in generations %}
-        <tr class="history-row" onclick="window.location='{{ url_for('generate.view_generation', gen_id=g.id) }}'">
-          <td><span class="gen-type-pill pill-{{ g.generation_type }}">{{ g.generation_type.replace('_',' ').title() }}</span></td>
-          <td><strong>{{ g.subject }}</strong></td>
-          <td>{{ g.grade_level }}</td>
-          <td>{{ g.prompt[:40] }}{% if g.prompt|length > 40 %}...{% endif %}</td>
-          <td>
+        <tr style="cursor:pointer;">
+          <td onclick="window.location='{{ '/history/' ~ g.id }}'">
+            <span class="gen-type-pill pill-{{ g.generation_type }}">{{ g.generation_type.replace('_',' ').title() }}</span>
+          </td>
+          <td onclick="window.location='{{ '/history/' ~ g.id }}'"><strong>{{ g.subject }}</strong></td>
+          <td onclick="window.location='{{ '/history/' ~ g.id }}'">{{ g.grade_level }}</td>
+          <td onclick="window.location='{{ '/history/' ~ g.id }}'">
+            {{ g.prompt[:38] }}{% if g.prompt|length > 38 %}...{% endif %}
+          </td>
+          <td onclick="window.location='{{ '/history/' ~ g.id }}'">
             {% if g.target_language %}
               <span class="badge badge-gold">{{ languages.get(g.target_language, g.target_language) }}</span>
-            {% else %}<span style="color:var(--mid);">English only</span>{% endif %}
+            {% else %}<span style="color:var(--mid);font-size:0.8rem;">English</span>{% endif %}
           </td>
-          <td><span class="badge badge-dark">{{ g.llm_used }}</span></td>
-          <td style="color:var(--mid);font-size:0.8rem;white-space:nowrap;">{{ g.created_at.strftime('%b %d, %Y') }}</td>
+          <td onclick="window.location='{{ '/history/' ~ g.id }}'">
+            <span class="badge badge-dark">{{ g.llm_used }}</span>
+            {% if g.audio_url %}&nbsp;<i class="fas fa-volume-up" style="color:var(--gold);font-size:0.8rem;"></i>{% endif %}
+          </td>
+          <td onclick="window.location='{{ '/history/' ~ g.id }}'">
+            <span style="color:var(--mid);font-size:0.8rem;white-space:nowrap;">{{ g.created_at.strftime('%b %d, %Y') }}</span>
+          </td>
           <td>
-            {% if g.audio_url %}<span style="color:var(--gold);"><i class="fas fa-volume-up"></i></span>{% endif %}
+            <button class="del-btn"
+              onclick="openDeleteModal('single', {{ g.id }}, '{{ g.generation_type.replace('_',' ').title() }} — {{ g.prompt[:30]|replace("'", "") }}')">
+              <i class="fas fa-trash"></i> Delete
+            </button>
           </td>
         </tr>
         {% endfor %}
@@ -60,4 +120,42 @@
     {% endif %}
   </div>
 </div>
+
+<!-- Delete confirmation modal -->
+<div class="confirm-modal" id="confirmModal">
+  <div class="confirm-box">
+    <div class="ci">🗑️</div>
+    <h3>Delete this generation?</h3>
+    <p id="confirmMsg">This cannot be undone.</p>
+    <div class="confirm-actions">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <form id="deleteForm" method="POST" style="margin:0;">
+        <button type="submit" class="btn btn-danger"><i class="fas fa-trash"></i> Yes, Delete</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+  function openDeleteModal(type, genId, label) {
+    const modal = document.getElementById('confirmModal');
+    const form  = document.getElementById('deleteForm');
+    const msg   = document.getElementById('confirmMsg');
+
+    if (type === 'all') {
+      msg.textContent = `This will permanently delete all ${label}. This cannot be undone.`;
+      form.action = '{{ url_for("generate.delete_all_generations") }}';
+    } else {
+      msg.textContent = `"${label}" will be permanently deleted.`;
+      form.action = `/history/${genId}/delete`;
+    }
+    modal.classList.add('open');
+  }
+  function closeModal() {
+    document.getElementById('confirmModal').classList.remove('open');
+  }
+  window.onclick = e => { if (e.target === document.getElementById('confirmModal')) closeModal(); }
+</script>
 {% endblock %}

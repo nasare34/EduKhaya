@@ -1,35 +1,65 @@
-# ── Render.com deployment ──────────────────────────────────────────────────────
+# ─── EduAI Ghana — Render Deployment ─────────────────────────────────────────
+# Free tier: no paid databases, no paid disks.
+# SQLite + ChromaDB use /tmp (ephemeral — resets on redeploy, fine for dev/demo).
+# Two services: eduai-api (FastAPI) and eduai-app (Flask).
+# Flask talks to FastAPI via Render's internal URL.
+
 services:
 
+  # ── 1. FastAPI AI Backend ──────────────────────────────────────────────────
   - type: web
-    name: edukhaya
+    name: eduai-api
     runtime: python
     plan: free
-    rootDir: backend
+    rootDir: .
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    startCommand: uvicorn fastapi_app.main:app --host 0.0.0.0 --port $PORT
     envVars:
-      - key: PYTHON_VERSION
-        value: "3.11.9"
+      # ── LLM Keys (set in Render dashboard → eduai-api → Environment) ──
+      - key: GROQ_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      # ── Khaya AI (separate keys per API) ──
+      - key: KHAYA_TRANSLATE_KEY
         sync: false
       - key: KHAYA_TTS_KEY
         sync: false
-      - key: KHAYA_TRANSLATE_KEY
-        sync: false
-      - key: GROQ_API_KEY
-        sync: false
-      - key: HF_TOKEN
-        sync: false
+      # ── ChromaDB: use /tmp (free, ephemeral) ──
+      - key: CHROMA_PERSIST_DIR
+        value: /tmp/chroma_db
+      # ── Python path so shared/ imports work ──
+      - key: PYTHONPATH
+        value: /opt/render/project/src
 
+  # ── 2. Flask Frontend ──────────────────────────────────────────────────────
   - type: web
-    name: kasa-health-frontend
+    name: eduai-app
     runtime: python
     plan: free
-    rootDir: frontend
+    rootDir: .
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2
+    startCommand: gunicorn "flask_app.app:create_app()" --bind 0.0.0.0:$PORT --workers 1 --timeout 120 --preload
     envVars:
-      - key: PYTHON_VERSION
-        value: "3.11.9"
+      # ── Flask security ──
+      - key: FLASK_SECRET_KEY
+        generateValue: true
+      - key: FLASK_ENV
+        value: production
+      # ── SQLite in /tmp (free, ephemeral) ──
+      - key: DATABASE_URL
+        value: sqlite:////tmp/eduai.db
+      # ── Uploads and audio stored in /tmp ──
+      - key: UPLOAD_FOLDER
+        value: /tmp/uploads
+      # ── FastAPI internal URL — replace YOUR_API_SERVICE_NAME with
+      #    the actual Render URL of eduai-api after first deploy ──
       - key: FASTAPI_URL
-        value: https://kasa-health-backend.onrender.com
+        value: https://eduai-api.onrender.com
+      # ── Python path ──
+      - key: PYTHONPATH
+        value: /opt/render/project/src

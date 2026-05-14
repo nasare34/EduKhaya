@@ -4,7 +4,9 @@ import hashlib
 import time
 from dotenv import load_dotenv
 
-load_dotenv()
+from pathlib import Path as _Path
+_env_path = _Path(__file__).resolve().parent.parent.parent / ".env"
+load_dotenv(dotenv_path=_env_path, override=True)
 
 # ─── Separate API keys — each Khaya API has its own subscription key ──────────
 # Get them from: https://translation.ghananlp.org → Profile → Subscriptions
@@ -116,24 +118,50 @@ def _tts_headers():
 
 
 def _chunk_text(text: str, max_chars: int = 950) -> list:
-    """Split long text into chunks at sentence/paragraph boundaries."""
+    """
+    Split text into chunks preserving structure.
+    Priority: split at double newlines (section breaks) first,
+    then at single newlines, then at sentence boundaries.
+    This keeps numbered lists and section headers together.
+    """
     if len(text) <= max_chars:
         return [text]
+
+    # First try to split at paragraph/section boundaries (blank lines)
+    paragraphs = text.split('\n\n')
     chunks = []
-    while text:
-        if len(text) <= max_chars:
-            chunks.append(text)
-            break
-        cut = text.rfind('. ', 0, max_chars)
-        if cut == -1:
-            cut = text.rfind('\n', 0, max_chars)
-        if cut == -1:
-            cut = max_chars
+    current = ""
+
+    for para in paragraphs:
+        # If adding this paragraph stays under limit, add it
+        if len(current) + len(para) + 2 <= max_chars:
+            current = (current + '\n\n' + para).strip() if current else para
         else:
-            cut += 1
-        chunks.append(text[:cut].strip())
-        text = text[cut:].strip()
-    return [c for c in chunks if c]
+            # Save current chunk if non-empty
+            if current:
+                chunks.append(current)
+            # If the paragraph itself is too long, split at line boundaries
+            if len(para) > max_chars:
+                lines = para.split('\n')
+                sub_current = ""
+                for line in lines:
+                    if len(sub_current) + len(line) + 1 <= max_chars:
+                        sub_current = (sub_current + '\n' + line).strip() if sub_current else line
+                    else:
+                        if sub_current:
+                            chunks.append(sub_current)
+                        sub_current = line
+                if sub_current:
+                    current = sub_current
+                else:
+                    current = ""
+            else:
+                current = para
+
+    if current:
+        chunks.append(current)
+
+    return [c for c in chunks if c.strip()]
 
 
 # ─── Translation ──────────────────────────────────────────────────────────────
@@ -172,10 +200,13 @@ def translate_text(text: str, source_lang: str = "en", target_lang: str = "tw") 
                 timeout=30
             )
             resp.raise_for_status()
-            # API returns a plain JSON string (not a dict)
             result = resp.json()
-            translated_chunks.append(result if isinstance(result, str) else str(result))
+            translated = result if isinstance(result, str) else str(result)
+            # Remove any stars the translation API might introduce
+            translated = translated.replace('***', '').replace('**', '').replace('*', '')
+            translated_chunks.append(translated)
 
+        # Rejoin with double newlines to preserve section structure
         return {
             "success": True,
             "translated_text": "\n\n".join(translated_chunks),
@@ -253,8 +284,10 @@ def text_to_speech(
         )
         resp.raise_for_status()
 
-        audio_dir = os.path.join(
-            os.path.dirname(__file__), "../../flask_app/static/audio"
+        # Use AUDIO_FOLDER env var if set (Render), otherwise fall back to static/audio
+        audio_dir = os.getenv(
+            "AUDIO_FOLDER",
+            os.path.join(os.path.dirname(__file__), "../../flask_app/static/audio")
         )
         os.makedirs(audio_dir, exist_ok=True)
 

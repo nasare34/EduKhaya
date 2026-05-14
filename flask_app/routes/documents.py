@@ -157,6 +157,31 @@ def save_document():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@docs_bp.route('/documents/delete-all', methods=['POST'])
+@login_required
+def delete_all():
+    docs = Document.query.filter_by(user_id=current_user.id).all()
+    count = len(docs)
+    try:
+        for doc in docs:
+            try:
+                if doc.chroma_collection:
+                    requests.delete(f"{FASTAPI_URL}/collections/{doc.chroma_collection}", timeout=10)
+            except Exception:
+                pass
+            try:
+                if doc.file_path and os.path.exists(doc.file_path):
+                    os.remove(doc.file_path)
+            except Exception:
+                pass
+            db.session.delete(doc)
+        db.session.commit()
+        flash(f'All {count} documents and their knowledge bases deleted.', 'success')
+    except Exception as e:
+        flash(f'Error: {str(e)}', 'danger')
+    return redirect(url_for('documents.index'))
+
+
 @docs_bp.route('/documents/delete/<int:doc_id>', methods=['POST'])
 @login_required
 def delete(doc_id):

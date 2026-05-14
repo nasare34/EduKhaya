@@ -168,9 +168,49 @@ def history():
                            generation_types=GENERATION_TYPES,
                            languages=TRANSLATION_LANGUAGES)
 
-@gen_bp.route('/history/<int:gen_id>')
+@gen_bp.route('/history/<int:gen_id>/delete', methods=['POST'])
 @login_required
-def view_generation(gen_id):
+def delete_generation(gen_id):
+    gen = Generation.query.filter_by(id=gen_id, user_id=current_user.id).first_or_404()
+    try:
+        # Delete audio file if it exists
+        if gen.audio_url:
+            audio_path = os.path.join(
+                os.path.dirname(__file__), '..', 'static',
+                gen.audio_url.lstrip('/')
+            )
+            if os.path.exists(audio_path):
+                os.remove(audio_path)
+        db.session.delete(gen)
+        db.session.commit()
+        flash('Generation deleted.', 'success')
+    except Exception as e:
+        flash(f'Error deleting: {str(e)}', 'danger')
+    return redirect(url_for('generate.history'))
+
+
+@gen_bp.route('/history/delete-all', methods=['POST'])
+@login_required
+def delete_all_generations():
+    try:
+        gens = Generation.query.filter_by(user_id=current_user.id).all()
+        for gen in gens:
+            if gen.audio_url:
+                audio_path = os.path.join(
+                    os.path.dirname(__file__), '..', 'static',
+                    gen.audio_url.lstrip('/')
+                )
+                if os.path.exists(audio_path):
+                    try:
+                        os.remove(audio_path)
+                    except Exception:
+                        pass
+            db.session.delete(gen)
+        db.session.commit()
+        flash(f'All {len(gens)} generations deleted.', 'success')
+    except Exception as e:
+        flash(f'Error: {str(e)}', 'danger')
+    return redirect(url_for('generate.history'))
     gen = Generation.query.filter_by(id=gen_id, user_id=current_user.id).first_or_404()
     return render_template('generate/result.html',
                            generation=gen,

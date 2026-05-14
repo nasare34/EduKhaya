@@ -4,6 +4,10 @@
 {% block topbar_actions %}
 <a href="{{ url_for('generate.index') }}" class="btn btn-outline btn-sm"><i class="fas fa-plus"></i> New</a>
 <a href="{{ url_for('generate.history') }}" class="btn btn-outline btn-sm"><i class="fas fa-history"></i> History</a>
+<button class="btn btn-outline btn-sm" style="color:var(--red);border-color:rgba(192,57,43,0.3);"
+  onclick="document.getElementById('resultDeleteModal').style.display='flex'">
+  <i class="fas fa-trash"></i> Delete
+</button>
 {% endblock %}
 {% block extra_head %}
 <style>
@@ -11,10 +15,41 @@
   .content-box {
     background:var(--white); border:1px solid var(--border); border-radius:var(--radius);
     padding:32px; line-height:1.8; font-size:0.92rem; color:var(--dark);
-    box-shadow:var(--shadow); white-space:pre-wrap; min-height:200px;
+    box-shadow:var(--shadow); min-height:200px;
   }
+  /* Structured content rendering */
+  .content-box .c-section-heading {
+    font-weight:700; font-size:0.95rem; color:var(--dark);
+    margin:20px 0 8px; letter-spacing:0.02em;
+    padding-bottom:4px; border-bottom:2px solid var(--gold-pale);
+  }
+  .content-box .c-section-heading:first-child { margin-top:0; }
+  .content-box .c-numbered { margin:4px 0 4px 16px; }
+  .content-box .c-numbered .c-num {
+    display:inline-block; min-width:24px; font-weight:600; color:var(--gold);
+  }
+  .content-box .c-bullet { margin:4px 0 4px 20px; }
+  .content-box .c-bullet::before { content:"–"; color:var(--mid); margin-right:8px; }
+  .content-box .c-sub { margin:4px 0 4px 36px; color:var(--mid); }
+  .content-box .c-paragraph { margin:8px 0; }
+  .content-box .c-blank { height:8px; }
 
-  /* ── Translation panel ── */
+  .translated-content {
+    background:var(--light); border-radius:var(--radius-sm);
+    padding:20px; font-size:0.9rem; line-height:1.7;
+  }
+  .translated-content .c-section-heading {
+    font-weight:700; font-size:0.92rem; color:var(--dark);
+    margin:16px 0 6px; padding-bottom:3px; border-bottom:2px solid var(--gold-pale);
+  }
+  .translated-content .c-section-heading:first-child { margin-top:0; }
+  .translated-content .c-numbered { margin:3px 0 3px 16px; }
+  .translated-content .c-numbered .c-num { display:inline-block; min-width:22px; font-weight:600; color:var(--gold); }
+  .translated-content .c-bullet { margin:3px 0 3px 20px; }
+  .translated-content .c-bullet::before { content:"–"; color:var(--mid); margin-right:8px; }
+  .translated-content .c-sub { margin:3px 0 3px 36px; color:var(--mid); }
+  .translated-content .c-paragraph { margin:6px 0; }
+  .translated-content .c-blank { height:6px; }
   .khaya-panel {
     background:var(--white); border:1px solid var(--border);
     border-radius:var(--radius); overflow:hidden; box-shadow:var(--shadow);
@@ -42,12 +77,7 @@
 
   .translated-section { display:none; padding:20px; border-top:1px solid var(--border); }
   .translated-section.show { display:block; }
-  .translated-content {
-    background:var(--light); border-radius:var(--radius-sm);
-    padding:20px; white-space:pre-wrap; font-size:0.9rem; line-height:1.7;
-  }
-
-  /* ── TTS panel ── */
+  /* ── Translation panel ── */
   .tts-controls {
     padding:20px 22px;
     display:flex; flex-wrap:wrap; gap:14px; align-items:flex-end;
@@ -88,8 +118,10 @@
   </div>
 </div>
 
-<!-- Generated content -->
-<div class="content-box" id="englishContent">{{ content }}</div>
+<!-- Generated content — rendered as structured HTML -->
+<div class="content-box" id="englishContent"></div>
+<!-- Raw content stored in hidden element for copy/TTS/translate -->
+<script id="rawContent" type="text/plain">{{ content | e }}</script>
 
 <!-- ═══════════════════ TRANSLATION PANEL ════════════════════════ -->
 <div class="khaya-panel">
@@ -185,6 +217,67 @@
   let translatedText = '';
   let currentTranslationLang = '';
 
+  // ── Raw content (stars already stripped by Python clean_response) ──────────
+  const RAW_CONTENT = document.getElementById('rawContent').textContent;
+
+  // ── Format plain text into structured HTML ─────────────────────────────────
+  function formatContent(text, targetEl) {
+    const lines = text.split('\n');
+    let html = '';
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmed = line.trim();
+
+      if (!trimmed) {
+        html += '<div class="c-blank"></div>';
+        continue;
+      }
+
+      // Section heading: ALL CAPS line ending with colon, or all caps line
+      if (/^[A-Z][A-Z\s\/\:\-\(\)]{4,}:?\s*$/.test(trimmed) && !/^\d/.test(trimmed)) {
+        html += `<div class="c-section-heading">${esc(trimmed)}</div>`;
+        continue;
+      }
+
+      // Numbered item: starts with digit(s) followed by . or )
+      const numMatch = trimmed.match(/^(\d+[\.\)])\s+(.+)$/);
+      if (numMatch) {
+        html += `<div class="c-numbered"><span class="c-num">${esc(numMatch[1])}</span> ${esc(numMatch[2])}</div>`;
+        continue;
+      }
+
+      // Sub-item: starts with a) b) c) or A) B)
+      const subMatch = trimmed.match(/^([a-zA-Z][\.\)])\s+(.+)$/);
+      if (subMatch) {
+        html += `<div class="c-sub">${esc(subMatch[1])} ${esc(subMatch[2])}</div>`;
+        continue;
+      }
+
+      // Bullet: starts with - or •
+      if (/^[-•]\s+/.test(trimmed)) {
+        html += `<div class="c-bullet">${esc(trimmed.replace(/^[-•]\s+/, ''))}</div>`;
+        continue;
+      }
+
+      // Plain paragraph
+      html += `<div class="c-paragraph">${esc(trimmed)}</div>`;
+    }
+
+    targetEl.innerHTML = html;
+  }
+
+  function esc(str) {
+    return str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  // Render on page load
+  formatContent(RAW_CONTENT, document.getElementById('englishContent'));
+
   // ── Translation ────────────────────────────────────────────────
   function translateTo(langCode, langName) {
     document.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('active'));
@@ -192,7 +285,8 @@
     currentTranslationLang = langCode;
 
     showLoading(`Translating to ${langName} via Khaya AI...`);
-    const text = document.getElementById('englishContent').textContent;
+    // Always use RAW_CONTENT for translation — not .textContent which loses newlines
+    const text = RAW_CONTENT;
 
     fetch('/generate/translate', {
       method: 'POST',
@@ -204,10 +298,11 @@
       hideLoading();
       if (data.success) {
         translatedText = data.translated_text;
-        document.getElementById('translatedContent').textContent = translatedText;
+        // Render translated content with same formatter
+        const translatedEl = document.getElementById('translatedContent');
+        formatContent(translatedText, translatedEl);
         document.getElementById('translatedLangLabel').textContent = `🌍 ${langName}`;
         document.getElementById('translatedSection').classList.add('show');
-        // Enable "Translated text" TTS source option
         document.getElementById('ttsTranslatedOpt').disabled = false;
         document.getElementById('ttsSourceSelect').value = 'translated';
         // Auto-select matching TTS language if possible
@@ -245,9 +340,10 @@
     const fmt       = document.getElementById('ttsFormatSelect').value;
     const src       = document.getElementById('ttsSourceSelect').value;
 
+    // Use RAW_CONTENT for English, translatedText for translated
     const useText = (src === 'translated' && translatedText)
       ? translatedText
-      : document.getElementById('englishContent').textContent;
+      : RAW_CONTENT;
 
     if (!useText.trim()) { alert('No text to synthesize.'); return; }
 
@@ -290,7 +386,7 @@
 
   // ── Copy helpers ───────────────────────────────────────────────
   function copyContent() {
-    navigator.clipboard.writeText(document.getElementById('englishContent').textContent)
+    navigator.clipboard.writeText(RAW_CONTENT)
       .then(() => {
         const b = event.target.closest('button');
         b.innerHTML = '<i class="fas fa-check"></i> Copied!';
@@ -306,5 +402,25 @@
         setTimeout(() => b.innerHTML = '<i class="fas fa-copy"></i> Copy', 2000);
       });
   }
+
+  // Close delete modal on backdrop click
+  document.getElementById('resultDeleteModal').addEventListener('click', function(e) {
+    if (e.target === this) this.style.display = 'none';
+  });
 </script>
+
+<!-- Delete this generation modal -->
+<div id="resultDeleteModal" style="display:none;position:fixed;inset:0;background:rgba(26,26,46,0.6);z-index:600;align-items:center;justify-content:center;">
+  <div style="background:var(--white);border-radius:var(--radius);padding:36px;max-width:400px;width:100%;box-shadow:var(--shadow-lg);text-align:center;">
+    <div style="font-size:2.5rem;margin-bottom:12px;">🗑️</div>
+    <h3 style="font-family:var(--font-display);font-size:1.3rem;margin-bottom:8px;">Delete this generation?</h3>
+    <p style="color:var(--mid);font-size:0.88rem;margin-bottom:28px;">This content will be permanently removed and cannot be undone.</p>
+    <div style="display:flex;gap:12px;justify-content:center;">
+      <button class="btn btn-outline" onclick="document.getElementById('resultDeleteModal').style.display='none'">Cancel</button>
+      <form method="POST" action="{{ url_for('generate.delete_generation', gen_id=generation.id) }}" style="margin:0;">
+        <button type="submit" class="btn btn-danger"><i class="fas fa-trash"></i> Yes, Delete</button>
+      </form>
+    </div>
+  </div>
+</div>
 {% endblock %}

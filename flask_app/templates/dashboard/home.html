@@ -122,7 +122,7 @@
         <thead><tr><th>Type</th><th>Subject</th><th>Topic</th><th>Date</th></tr></thead>
         <tbody>
           {% for g in recent_gens %}
-          <tr onclick="window.location='{{ url_for('generate.view_generation', gen_id=g.id) }}'" style="cursor:pointer;">
+          <tr onclick="window.location='/history/' + '{{ g.id }}'" style="cursor:pointer;">
             <td><span class="gen-type-pill pill-{{ g.generation_type }}">{{ g.generation_type.replace('_',' ').title() }}</span></td>
             <td>{{ g.subject }}</td>
             <td>{{ g.prompt[:30] }}{% if g.prompt|length > 30 %}...{% endif %}</td>

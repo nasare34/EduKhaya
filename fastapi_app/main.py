@@ -1,4 +1,10 @@
-import sys, os, json, asyncio, tempfile, shutil
+import sys, os, json, asyncio, tempfile, shutil, logging, traceback
+from pathlib import Path
+from dotenv import load_dotenv
+load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / ".env", override=True)
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
+logger = logging.getLogger("eduai")
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Request
@@ -22,7 +28,14 @@ app = FastAPI(title="EduAI Ghana - AI Backend", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://127.0.0.1:5000", "http://localhost:5000"],
+    allow_origins=[
+        "http://127.0.0.1:5000",
+        "http://localhost:5000",
+        # Render domains — update with your actual Flask service URL after deploy
+        "https://eduai-app.onrender.com",
+        # Wildcard for all onrender.com subdomains (covers random suffixes)
+        "https://*.onrender.com",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -187,6 +200,7 @@ async def generate(req: GenerateRequest):
         content = generate_response(prompt, req.llm_choice or "groq")
         return GenerateResponse(success=True, content=content, llm_used=req.llm_choice or "groq")
     except Exception as e:
+        logger.error(f"Generate error: {type(e).__name__}: {e}\n{traceback.format_exc()}")
         raise HTTPException(500, str(e))
 
 # ─── Translation ──────────────────────────────────────────────────────────────

@@ -1,13 +1,13 @@
 import sys, os
+from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+from dotenv import load_dotenv
+load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / ".env", override=True)
 
 from flask import Flask
 from flask_login import LoginManager
 from flask_bcrypt import Bcrypt
-from dotenv import load_dotenv
-
-load_dotenv()
-
 from shared.models.database import db, User
 
 bcrypt = Bcrypt()
@@ -16,13 +16,28 @@ login_manager = LoginManager()
 def create_app():
     app = Flask(__name__)
     app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', 'dev-secret-change-this')
-    app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///eduai.db')
+
+    # DATABASE — use /data/eduai.db on Render (persistent disk), local sqlite otherwise
+    db_url = os.getenv('DATABASE_URL', '')
+    if not db_url:
+        db_url = f"sqlite:///{Path(__file__).resolve().parent.parent / 'eduai.db'}"
+    app.config['SQLALCHEMY_DATABASE_URI'] = db_url
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-    app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB upload limit
-    app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(__file__), 'static', 'uploads')
+    app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
+
+    # UPLOAD FOLDER — use /data/uploads on Render, local static/uploads otherwise
+    upload_folder = os.getenv('UPLOAD_FOLDER', '')
+    if not upload_folder:
+        upload_folder = str(Path(__file__).resolve().parent / 'static' / 'uploads')
+    app.config['UPLOAD_FOLDER'] = upload_folder
+
+    # AUDIO FOLDER — sibling of uploads
+    audio_folder = os.getenv('AUDIO_FOLDER', '')
+    if not audio_folder:
+        audio_folder = str(Path(__file__).resolve().parent / 'static' / 'audio')
 
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-    os.makedirs(os.path.join(os.path.dirname(__file__), 'static', 'audio'), exist_ok=True)
+    os.makedirs(audio_folder, exist_ok=True)
 
     db.init_app(app)
     bcrypt.init_app(app)

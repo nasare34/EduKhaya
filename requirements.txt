@@ -28,3 +28,5 @@ Pillow==10.4.0
 pytesseract==0.3.13
 # PDF image fallback (scanned PDFs)
 PyMuPDF==1.24.9
+gunicorn==22.0.0
+gunicorn==22.0.0
